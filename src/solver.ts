@@ -62,12 +62,16 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
 
   canProve: (program: Clause[], query: Predicate): boolean => {
     let proof = program.map(function(clause:Clause){
-      let exactMatch = clause.head.name == query.name && equalArguments(clause.head.arguments,query.arguments);
+      if (clause.head.name != query.name){
+        return false
+      }
+
+      let exactMatch = equalArguments(clause.head.arguments,query.arguments);
       if (exactMatch){
         return exactMatch;
       }
 
-      let equalWithVariable = clause.head.name == query.name && equalArgumentsWithVariable(clause.head.arguments,query.arguments);
+      let equalWithVariable = equalArgumentsWithVariable(clause.head.arguments,query.arguments);
       if (equalWithVariable){
         return equalWithVariable;
       }
