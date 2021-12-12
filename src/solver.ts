@@ -31,6 +31,22 @@ const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean =
   return equalArgs;
 }
 
+const equalArgumentsWithVariable = (predicateArgs:string[],queryValues:string[]) : boolean => {
+  if(predicateArgs.length != queryValues.length){
+    return false;
+  }
+  let equalArgs = true;
+  let i = 0;
+  while(equalArgs && i < predicateArgs.length){
+    if (predicateArgs[i] != queryValues[i] && !isVariable(queryValues[i] as string)){
+      equalArgs = false;
+    }
+    i++
+  }
+  return equalArgs;
+}
+
+
 const or = (truthValue:boolean, currentTruthValue:boolean) : boolean => {
   return truthValue || currentTruthValue;
 }
@@ -47,13 +63,22 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
   canProve: (program: Clause[], query: Predicate): boolean => {
     let proof = program.map(function(clause:Clause){
       let exactMatch = clause.head.name == query.name && equalArguments(clause.head.arguments,query.arguments);
+      if (exactMatch){
+        return exactMatch;
+      }
+
+      let equalWithVariable = clause.head.name == query.name && equalArgumentsWithVariable(clause.head.arguments,query.arguments);
+      if (equalWithVariable){
+        return equalWithVariable;
+      }
+
       let result = clause.body.map(function(rule:Predicate){
         if (rule.name != query.name){
           return false;
         }
         return rule.arguments == query.arguments; // todo
       });
-      return result.reduce(or,exactMatch);
+      return result.reduce(or,false);
     })
 
     return proof.reduce(or,false);
