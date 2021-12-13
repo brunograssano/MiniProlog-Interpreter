@@ -2,6 +2,11 @@ import { MiniProlog } from './MiniProlog';
 
 const A_IN_UNICODE = 65, Z_IN_UNICODE = 90;
 
+type Variable = {
+  value: string;
+  testedPath: boolean;
+}
+
 type Predicate = {
   name: string;
   arguments: string[];
@@ -40,19 +45,41 @@ const equalArgumentsWithVariable = (predicateArgs:string[],queryValues:string[])
   return equalArgs;
 }
 
-const copyArgumentsToRule = (headArgs:string[], predicateArgs:string[],queryValues:string[]) : string[] => {
-  let copiedArgs :string[] = [];
+const getValueForVariable = (variables:Variable[]) : string => {
+  let foundOne : boolean = false;
+  let i : number = 0;
+  let variableValue : string = "";
+  while (!foundOne && i < variables.length){
+    let variable = variables[i] as Variable;
+    if(!variable.testedPath){
+      variableValue = variable.value;
+      variable.testedPath = true
+      foundOne = true;
+    }
+    i++;
+  }
 
-  for (let i=0; i < headArgs.length; i++){
-    for (let j=0; j < predicateArgs.length; j++){
-      if(headArgs[i] == predicateArgs[j] && copiedArgs.length < predicateArgs.length){
-        copiedArgs.push(queryValues[j] as string);
+  return variableValue;
+}
+
+const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string>,variableNames : Map<string,Variable[]> ) : string[] => {
+  let copiedArgs :string[] = [];
+  rule.arguments.forEach(function (argument:string) {
+    if (argumentValues.has(argument)){
+      copiedArgs.push(argumentValues.get(argument) as string)
+    }
+    else if(variableNames.has(argument)){
+      let variableValues = variableNames.get(argument) as Variable[];
+      if(variableValues.length == 0){
+        copiedArgs.push(argument)
       }
-      if (!headArgs.includes(predicateArgs[j] as string) && copiedArgs.length < predicateArgs.length){
-        copiedArgs.push(predicateArgs[j] as string);
+      else{
+        copiedArgs.push(getValueForVariable(variableValues))
       }
     }
-  }
+
+  })
+
   return copiedArgs;
 }
 
@@ -64,7 +91,7 @@ const hasVariables = (query: Predicate) : boolean => {
   return query.arguments.some(isVariable)
 }
 
-const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,string[]>) => {
+const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,Variable[]>) => {
   body.forEach(function (rule:Predicate) {
     rule.arguments.forEach(function (argument:string) {
       if (!head.arguments.includes(argument)){
@@ -80,7 +107,7 @@ const initializeArguments = (head: Predicate, query:Predicate, constantValues : 
   })
 }
 
-const getVariableValues = (program: Clause[], query: Predicate, variableValues : Map<string,string[]>) => {
+const getVariableValues = (program: Clause[], query: Predicate, variableValues : Map<string,Variable[]>) => {
   if (!hasVariables(query)){
     return;
   }
@@ -93,9 +120,9 @@ const getVariableValues = (program: Clause[], query: Predicate, variableValues :
     if(equalArgumentsWithVariable(predicateArgs,query.arguments)){
       predicateArgs.forEach(function (value:string,i:number) {
         let variableName = query.arguments[i] as string;
-        if(isVariable(variableName)){
-          let valuesOfVariable = variableValues.get(variableName) as string[];
-          valuesOfVariable.push(value);
+        if(isVariable(variableName) && variableValues.has(variableName)){
+          let valuesOfVariable = variableValues.get(variableName) as Variable[];
+          valuesOfVariable.push({value:value,testedPath:false});
         }
       })
     }
@@ -103,37 +130,48 @@ const getVariableValues = (program: Clause[], query: Predicate, variableValues :
 
 }
 
+function getNewQuery(rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, Variable[]>) {
+  let ruleArguments = copyArgumentsToRule(rule, argumentValues, variableNames);
+  return {name: rule.name, arguments: ruleArguments};
+}
+
 const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolean =>{
-  let variableNames : Map<string,string[]> = new Map();
+  let falseCount : number = 0;
+  let variableNames : Map<string,Variable[]> = new Map();
   let argumentValues : Map<string,string> = new Map();
   initializeVariables(clause.head,clause.body,variableNames);
   initializeArguments(clause.head,query,argumentValues);
-  let rule = clause.body[0] as Predicate;
-  let ruleArguments = copyArgumentsToRule(clause.head.arguments,rule.arguments,query.arguments);
-  let newQuery = {name:rule.name,arguments:ruleArguments};
-  if (miniProlog.canProve(program,newQuery)){
-    getVariableValues(program,newQuery,variableNames);
-  }
-  else{
-    return false;
-  }
 
+  for (let i=0; i < clause.body.length; i++){
+    for (let key of variableNames.keys()) {
+      let rule = clause.body[i] as Predicate;
+      let possibleValuesOfVariable = variableNames.get(key) as Variable[];
 
-  for (let i=1; i < clause.body.length; i++){
-    for (let key in variableNames.keys()) {
-      for (let value in variableNames.get(key)){
-        rule = clause.body[i] as Predicate;
-        ruleArguments =
-
+      if (possibleValuesOfVariable.length == 0){
+        let newQuery = getNewQuery(rule, argumentValues, variableNames);
+        if (miniProlog.canProve(program,newQuery)){
+          getVariableValues(program,newQuery,variableNames);
+          break;
+        }
+        return false;
       }
+
+      for (let variableValue in possibleValuesOfVariable){
+        let newQuery = getNewQuery(rule, argumentValues, variableNames);
+        if (!miniProlog.canProve(program,newQuery)){
+          falseCount++;
+        }
+      }
+
+      if(falseCount == possibleValuesOfVariable.length){
+        return false;
+      }
+      falseCount = 0;
     }
 
-
-
-
   }
 
-  return false;
+  return true;
 }
 
 
