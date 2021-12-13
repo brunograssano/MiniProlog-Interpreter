@@ -51,12 +51,12 @@ const copyArgumentsToRule = (headArgs:string[], predicateArgs:string[],queryValu
 
   for (let i=0; i < headArgs.length; i++){
     for (let j=0; j < predicateArgs.length; j++){
-      if((headArgs[i] == predicateArgs[j] || !headArgs.includes(predicateArgs[j] as string)) &&
-          copiedArgs.length < predicateArgs.length){
+      if(headArgs[i] == predicateArgs[j] && copiedArgs.length < predicateArgs.length){
         copiedArgs.push(queryValues[j] as string);
       }
-      if (!headArgs.includes(predicateArgs[j] as string)){
-        variableNames.set(queryValues[j] as string,[])
+      if (!headArgs.includes(predicateArgs[j] as string) && copiedArgs.length < predicateArgs.length){
+        copiedArgs.push(predicateArgs[j] as string);
+        variableNames.set(predicateArgs[j] as string,[])
       }
     }
   }
@@ -81,19 +81,15 @@ const getVariableValues = (program: Clause[], query: Predicate, variableValues :
       return;
     }
     let predicateArgs = rule.head.arguments;
-    if(predicateArgs.length != query.arguments.length){
-      return;
+    if(equalArgumentsWithVariable(predicateArgs,query.arguments)){
+      predicateArgs.forEach(function (value:string,i:number) {
+        let variableName = query.arguments[i] as string;
+        if(isVariable(variableName)){
+          let valuesOfVariable = variableValues.get(variableName) as string[];
+          valuesOfVariable.push(value);
+        }
+      })
     }
-
-    let i = 0;
-    while(i < predicateArgs.length){
-      if (predicateArgs[i] != query.arguments[i] && isVariable(query.arguments[i] as string)){
-        let possibleValues = variableValues.get(query.arguments[i] as string) as string[];
-        possibleValues.push(predicateArgs[i] as string)
-      }
-      i++
-    }
-
   })
 
 }
