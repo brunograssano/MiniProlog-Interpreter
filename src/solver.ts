@@ -107,6 +107,16 @@ const initializeArguments = (head: Predicate, query:Predicate, constantValues : 
   })
 }
 
+function hasVariableValue(variables: Variable[], value: string) {
+  let found = false;
+  variables.forEach((variable: Variable) => {
+    if(variable.value == value){
+      found = true;
+    }
+  })
+  return found;
+}
+
 const getVariableValues = (program: Clause[], query: Predicate, variableValues : Map<string,Variable[]>) => {
   if (!hasVariables(query)){
     return;
@@ -120,7 +130,7 @@ const getVariableValues = (program: Clause[], query: Predicate, variableValues :
     if(equalArgumentsWithVariable(predicateArgs,query.arguments)){
       predicateArgs.forEach(function (value:string,i:number) {
         let variableName = query.arguments[i] as string;
-        if(isVariable(variableName) && variableValues.has(variableName)){
+        if(isVariable(variableName) && variableValues.has(variableName) && !hasVariableValue(variableValues.get(variableName) as Variable[] ,value)){
           let valuesOfVariable = variableValues.get(variableName) as Variable[];
           valuesOfVariable.push({value:value,testedPath:false});
         }
@@ -135,6 +145,13 @@ function getNewQuery(rule: Predicate, argumentValues: Map<string, string>, varia
   return {name: rule.name, arguments: ruleArguments};
 }
 
+function resetVariablePaths(possibleValuesOfVariable: Variable[]) {
+  for (let i = 0; i < possibleValuesOfVariable.length ; i++){
+    let variable = possibleValuesOfVariable[i] as Variable;
+    variable.testedPath = false;
+  }
+}
+
 const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolean =>{
   let falseCount : number = 0;
   let variableNames : Map<string,Variable[]> = new Map();
@@ -147,12 +164,16 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
       let rule = clause.body[i] as Predicate;
       let possibleValuesOfVariable = variableNames.get(key) as Variable[];
 
+      if (!rule.arguments.includes(key)){
+        continue;
+      }
+
       if (possibleValuesOfVariable.length == 0){
         let newQuery = getNewQuery(rule, argumentValues, variableNames);
         if (miniProlog.canProve(program,newQuery)){
           getVariableValues(program,newQuery,variableNames);
-          break;
-        }
+          continue;
+        }//todo C tiene falso solamente cuando deberia de tener falso y verdadero, hay que probar con el valor siguiente de NX y lo mismo para despues - las distintas combinaciones
         return false;
       }
 
@@ -167,6 +188,8 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
         return false;
       }
       falseCount = 0;
+
+      resetVariablePaths(possibleValuesOfVariable);
     }
 
   }
