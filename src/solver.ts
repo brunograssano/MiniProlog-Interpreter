@@ -33,12 +33,15 @@ const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean =
   return equalArgs;
 }
 
-const equalArgumentsWithVariable = (predicateArgs:string[],queryValues:string[]) : boolean => {
-  let equalArgs = true;
+const equalArgumentsWithVariable = (predicateArgs: string[], query: Predicate, tree: Clause[]) : boolean => {
+  let equalArgs = false;
   let i = 0;
-  while(equalArgs && i < predicateArgs.length){
-    if (predicateArgs[i] != queryValues[i] && !isVariable(queryValues[i] as string)){
-      equalArgs = false;
+  while(!equalArgs && i < predicateArgs.length){
+    if (isVariable(query.arguments[i] as string)){
+      let variableName = query.arguments[i];
+      query.arguments[i] = predicateArgs[i] as string;
+      equalArgs ||= miniProlog.canProve(tree,query);
+      query.arguments[i] = variableName as string;
     }
     i++
   }
@@ -117,17 +120,17 @@ function hasVariableValue(variables: Variable[], value: string) {
   return found;
 }
 
-const getVariableValues = (program: Clause[], query: Predicate, variableValues : Map<string,Variable[]>) => {
+const getVariableValues = (facts: Clause[], query: Predicate, variableValues : Map<string,Variable[]>) => {
   if (!hasVariables(query)){
     return;
   }
 
-  program.forEach(function (rule:Clause) {
+  facts.forEach(function (rule:Clause) {
     if (rule.head.name != query.name){
       return;
     }
     let predicateArgs = rule.head.arguments;
-    if(equalArgumentsWithVariable(predicateArgs,query.arguments)){
+    if(equalArgumentsWithVariable(predicateArgs, query,facts )){
       predicateArgs.forEach(function (value:string,i:number) {
         let variableName = query.arguments[i] as string;
         if(isVariable(variableName) && variableValues.has(variableName) && !hasVariableValue(variableValues.get(variableName) as Variable[] ,value)){
@@ -152,7 +155,51 @@ function resetVariablePaths(possibleValuesOfVariable: Variable[]) {
   }
 }
 
-const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolean =>{
+function hasAlternativesLeft(rule: Predicate, variableNames: Map<string, Variable[]>) {
+  let hasAnAlternative = false;
+  rule.arguments.forEach(function (argument:string) {
+    if (variableNames.has(argument)){
+      let variable = variableNames.get(argument) as Variable[];
+      variable.forEach(function (variable:Variable) {
+        if (!variable.testedPath){
+          hasAnAlternative = true
+        }
+      })
+    }
+  })
+  return hasAnAlternative;
+}
+
+function checkAlternatives(program: Clause[], rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, Variable[]>) : boolean{
+  if (!hasAlternativesLeft(rule,variableNames)){
+    return false;
+  } // todo permutar los valores de forma tal de recorrer el arbol de opciones
+
+  let result = false;
+  let newQuery = getNewQuery(rule, argumentValues, variableNames);
+  if (miniProlog.canProve(program,newQuery)){
+    getVariableValues(program,newQuery,variableNames);
+    result = true;
+  }
+
+  return checkAlternatives(program,rule, argumentValues, variableNames) || result;
+}
+
+function hasVariablesWithMultipleValues(rule: Predicate, variableNames: Map<string, Variable[]>) {
+  let hasMultipleOptions = false;
+  rule.arguments.forEach(function (argument:string) {
+    if (variableNames.has(argument)){
+      let variable = variableNames.get(argument) as Variable[];
+      if (variable.length > 1){
+        hasMultipleOptions = true;
+      }
+    }
+  })
+  return hasMultipleOptions;
+}
+
+const exploreTree = (facts: Clause[],clause : Clause,query:Predicate) : boolean =>{
+
   let falseCount : number = 0;
   let variableNames : Map<string,Variable[]> = new Map();
   let argumentValues : Map<string,string> = new Map();
@@ -160,8 +207,17 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
   initializeArguments(clause.head,query,argumentValues);
 
   for (let i=0; i < clause.body.length; i++){
+    let rule = clause.body[i] as Predicate;
+
+    if (variableNames.size == 0){
+      let newQuery = getNewQuery(rule, argumentValues, variableNames);
+      if (!miniProlog.canProve(facts,newQuery)){
+        return false;
+      }
+    }
+
     for (let key of variableNames.keys()) {
-      let rule = clause.body[i] as Predicate;
+
       let possibleValuesOfVariable = variableNames.get(key) as Variable[];
 
       if (!rule.arguments.includes(key)){
@@ -169,17 +225,25 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
       }
 
       if (possibleValuesOfVariable.length == 0){
-        let newQuery = getNewQuery(rule, argumentValues, variableNames);
-        if (miniProlog.canProve(program,newQuery)){
-          getVariableValues(program,newQuery,variableNames);
+        if(hasVariablesWithMultipleValues(rule,variableNames)){
+          let result = checkAlternatives(facts,rule, argumentValues, variableNames);
+          if (!result){
+            return false;
+          }
           continue;
-        }//todo C tiene falso solamente cuando deberia de tener falso y verdadero, hay que probar con el valor siguiente de NX y lo mismo para despues - las distintas combinaciones
+        }
+
+        let newQuery = getNewQuery(rule, argumentValues, variableNames);
+        if (miniProlog.canProve(facts,newQuery)){
+          getVariableValues(facts,newQuery,variableNames);
+          continue;
+        }
         return false;
       }
 
       for (let variableValue in possibleValuesOfVariable){
         let newQuery = getNewQuery(rule, argumentValues, variableNames);
-        if (!miniProlog.canProve(program,newQuery)){
+        if (!miniProlog.canProve(facts,newQuery)){
           falseCount++;
         }
       }
@@ -198,6 +262,16 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
 }
 
 
+function keepFacts(program: Clause[]) : Clause[] {
+  let tree : Clause[] = [];
+  program.forEach(function (clause:Clause) {
+    if (clause.body.length == 0){
+      tree.push(clause);
+    }
+  })
+  return tree;
+}
+
 const miniProlog: MiniProlog<Clause, Predicate> = {
   buildPredicate: (name: string, ...args: string[]): Predicate => {
     return {name:name, arguments:args};
@@ -208,6 +282,8 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
   },
 
   canProve: (program: Clause[], query: Predicate): boolean => {
+    let tree : Clause[] = keepFacts(program);
+
     let proof = program.map(function(clause:Clause){
       if ((clause.head.name != query.name) || (clause.head.arguments.length != query.arguments.length)){
         return false
@@ -218,7 +294,7 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
         return exactMatch;
       }
 
-      let equalWithVariable = equalArgumentsWithVariable(clause.head.arguments,query.arguments);
+      let equalWithVariable = equalArgumentsWithVariable(clause.head.arguments,query, tree);
       if (equalWithVariable){
         return equalWithVariable;
       }
@@ -227,7 +303,7 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
         return false;
       }
 
-      return exploreTree(program,clause,query);
+      return exploreTree(tree,clause,query);
     })
 
     return proof.reduce(or,false);
