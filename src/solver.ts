@@ -17,9 +17,6 @@ const isVariable = (value:string) : boolean => {
 }
 
 const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean => {
-  if(predicateArgs.length != queryValues.length){
-    return false;
-  }
   let equalArgs = true;
   let i = 0;
   while(equalArgs && i < predicateArgs.length){
@@ -32,9 +29,6 @@ const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean =
 }
 
 const equalArgumentsWithVariable = (predicateArgs:string[],queryValues:string[]) : boolean => {
-  if(predicateArgs.length != queryValues.length){
-    return false;
-  }
   let equalArgs = true;
   let i = 0;
   while(equalArgs && i < predicateArgs.length){
@@ -80,6 +74,12 @@ const initializeVariables = (head: Predicate, body: Predicate[], variableValues 
   })
 }
 
+const initializeArguments = (head: Predicate, query:Predicate, constantValues : Map<string,string>) => {
+  head.arguments.forEach(function (name:string,i:number) {
+    constantValues.set(name,query.arguments[i] as string)
+  })
+}
+
 const getVariableValues = (program: Clause[], query: Predicate, variableValues : Map<string,string[]>) => {
   if (!hasVariables(query)){
     return;
@@ -105,7 +105,9 @@ const getVariableValues = (program: Clause[], query: Predicate, variableValues :
 
 const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolean =>{
   let variableNames : Map<string,string[]> = new Map();
+  let argumentValues : Map<string,string> = new Map();
   initializeVariables(clause.head,clause.body,variableNames);
+  initializeArguments(clause.head,query,argumentValues);
   let rule = clause.body[0] as Predicate;
   let ruleArguments = copyArgumentsToRule(clause.head.arguments,rule.arguments,query.arguments);
   let newQuery = {name:rule.name,arguments:ruleArguments};
@@ -121,10 +123,14 @@ const exploreTree = (program: Clause[],clause : Clause,query:Predicate) : boolea
     for (let key in variableNames.keys()) {
       for (let value in variableNames.get(key)){
         rule = clause.body[i] as Predicate;
-
+        ruleArguments =
 
       }
     }
+
+
+
+
   }
 
   return false;
@@ -142,7 +148,7 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
 
   canProve: (program: Clause[], query: Predicate): boolean => {
     let proof = program.map(function(clause:Clause){
-      if (clause.head.name != query.name){
+      if ((clause.head.name != query.name) || (clause.head.arguments.length != query.arguments.length)){
         return false
       }
 
