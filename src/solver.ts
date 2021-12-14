@@ -2,312 +2,221 @@ import { MiniProlog } from './MiniProlog';
 
 const A_IN_UNICODE = 65, Z_IN_UNICODE = 90;
 
-type Variable = {
-  value: string;
-  testedPath: boolean;
-}
-
 type Predicate = {
-  name: string;
-  arguments: string[];
+    name: string;
+    arguments: string[];
 };
 
 type Clause = {
-  head: Predicate;
-  body: Predicate[];
+    head: Predicate;
+    body: Predicate[];
 };
 
 const isVariable = (value:string) : boolean => {
-  return value != "" &&  A_IN_UNICODE <= value.charCodeAt(0) && value.charCodeAt(0) <= Z_IN_UNICODE;
+    return value != "" &&  A_IN_UNICODE <= value.charCodeAt(0) && value.charCodeAt(0) <= Z_IN_UNICODE;
 }
 
 const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean => {
-  let equalArgs = true;
-  let i = 0;
-  while(equalArgs && i < predicateArgs.length){
-    if (predicateArgs[i] != queryValues[i]){
-      equalArgs = false;
+    let equalArgs = true;
+    let i = 0;
+    while(equalArgs && i < predicateArgs.length){
+        if (predicateArgs[i] != queryValues[i]){
+            equalArgs = false;
+        }
+        i++
     }
-    i++
-  }
-  return equalArgs;
+    return equalArgs;
 }
 
 const equalArgumentsWithVariable = (predicateArgs: string[], query: Predicate, tree: Clause[]) : boolean => {
-  let equalArgs = false;
-  let i = 0;
-  while(!equalArgs && i < predicateArgs.length){
-    if (isVariable(query.arguments[i] as string)){
-      let variableName = query.arguments[i];
-      query.arguments[i] = predicateArgs[i] as string;
-      equalArgs ||= miniProlog.canProve(tree,query);
-      query.arguments[i] = variableName as string;
+    let equalArgs = false;
+    let i = 0;
+    while(!equalArgs && i < predicateArgs.length){
+        if (isVariable(query.arguments[i] as string)){
+            let variableName = query.arguments[i];
+            query.arguments[i] = predicateArgs[i] as string;
+            equalArgs ||= miniProlog.canProve(tree,query);
+            query.arguments[i] = variableName as string;
+        }
+        i++
     }
-    i++
-  }
-  return equalArgs;
+    return equalArgs;
 }
 
-const getValueForVariable = (variables:Variable[]) : string => {
-  let foundOne : boolean = false;
-  let i : number = 0;
-  let variableValue : string = "";
-  while (!foundOne && i < variables.length){
-    let variable = variables[i] as Variable;
-    if(!variable.testedPath){
-      variableValue = variable.value;
-      variable.testedPath = true
-      foundOne = true;
-    }
-    i++;
-  }
 
-  return variableValue;
-}
+const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string>,variableNames : Map<string,string> ) : string[] => {
+    let copiedArgs :string[] = [];
+    rule.arguments.forEach(function (argument:string) {
+        if (argumentValues.has(argument)){
+            copiedArgs.push(argumentValues.get(argument) as string)
+        }
+        else if(variableNames.has(argument)){
+            let variableValue = variableNames.get(argument) as string;
+            if(variableValue == ""){
+                copiedArgs.push(argument)
+            }
+            else{
+                copiedArgs.push(variableValue)
+            }
+        }
 
-const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string>,variableNames : Map<string,Variable[]> ) : string[] => {
-  let copiedArgs :string[] = [];
-  rule.arguments.forEach(function (argument:string) {
-    if (argumentValues.has(argument)){
-      copiedArgs.push(argumentValues.get(argument) as string)
-    }
-    else if(variableNames.has(argument)){
-      let variableValues = variableNames.get(argument) as Variable[];
-      if(variableValues.length == 0){
-        copiedArgs.push(argument)
-      }
-      else{
-        copiedArgs.push(getValueForVariable(variableValues))
-      }
-    }
+    })
 
-  })
-
-  return copiedArgs;
+    return copiedArgs;
 }
 
 const or = (truthValue:boolean, currentTruthValue:boolean) : boolean => {
-  return truthValue || currentTruthValue;
+    return truthValue || currentTruthValue;
 }
 
-const hasVariables = (query: Predicate) : boolean => {
-  return query.arguments.some(isVariable)
-}
-
-const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,Variable[]>) => {
-  body.forEach(function (rule:Predicate) {
-    rule.arguments.forEach(function (argument:string) {
-      if (!head.arguments.includes(argument)){
-        variableValues.set(argument,[]);
-      }
-    });
-  })
+const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,string>) => {
+    body.forEach(function (rule:Predicate) {
+        rule.arguments.forEach(function (argument:string) {
+            if (!head.arguments.includes(argument)){
+                variableValues.set(argument,"");
+            }
+        });
+    })
 }
 
 const initializeArguments = (head: Predicate, query:Predicate, constantValues : Map<string,string>) => {
-  head.arguments.forEach(function (name:string,i:number) {
-    constantValues.set(name,query.arguments[i] as string)
-  })
+    head.arguments.forEach(function (name:string,i:number) {
+        constantValues.set(name,query.arguments[i] as string)
+    })
 }
 
-function hasVariableValue(variables: Variable[], value: string) {
-  let found = false;
-  variables.forEach((variable: Variable) => {
-    if(variable.value == value){
-      found = true;
-    }
-  })
-  return found;
+
+
+function getNewQuery(rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, string>) {
+    let ruleArguments = copyArgumentsToRule(rule, argumentValues, variableNames);
+    return {name: rule.name, arguments: ruleArguments};
 }
 
-const getVariableValues = (facts: Clause[], query: Predicate, variableValues : Map<string,Variable[]>) => {
-  if (!hasVariables(query)){
-    return;
-  }
 
-  facts.forEach(function (rule:Clause) {
-    if (rule.head.name != query.name){
-      return;
+function changeValueInMap(argumentValues: Map<string, string>, variableNames: Map<string, string>, variableName: string, newValue: string) {
+    if (argumentValues.has(variableName)) {
+        argumentValues.set(variableName, newValue)
+    } else if (variableNames.has(variableName)) {
+        variableNames.set(variableName, newValue)
     }
-    let predicateArgs = rule.head.arguments;
-    if(equalArgumentsWithVariable(predicateArgs, query,facts )){
-      predicateArgs.forEach(function (value:string,i:number) {
-        let variableName = query.arguments[i] as string;
-        if(isVariable(variableName) && variableValues.has(variableName) && !hasVariableValue(variableValues.get(variableName) as Variable[] ,value)){
-          let valuesOfVariable = variableValues.get(variableName) as Variable[];
-          valuesOfVariable.push({value:value,testedPath:false});
+}
+
+const hasVariables = (query: Predicate) : boolean => {
+    return query.arguments.some(isVariable)
+}
+
+function canProveWithVariables(facts: Clause[], query: Predicate,
+                               argumentValues: Map<string, string>, variableNames: Map<string, string>,
+                               body: Predicate[], indexBody: number) : boolean {
+    if(indexBody > body.length){
+        return true;
+    }
+
+
+    let result = facts.map(function (rule:Clause) {
+        if (rule.head.name != query.name || rule.head.arguments.length != query.arguments.length){
+            return false;
         }
-      })
-    }
-  })
 
-}
+        let equalArgs = true;
+        let i = 0;
+        while(equalArgs && i < query.arguments.length){
+            if (rule.head.arguments[i] != query.arguments[i] && !isVariable(query.arguments[i] as string)){
+                equalArgs = false;
+            }
+            else if (isVariable(query.arguments[i] as string)){
+                let variableName = query.arguments[i] as string;
+                let newValue = rule.head.arguments[i] as string;
+                query.arguments[i] = newValue;
 
-function getNewQuery(rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, Variable[]>) {
-  let ruleArguments = copyArgumentsToRule(rule, argumentValues, variableNames);
-  return {name: rule.name, arguments: ruleArguments};
-}
+                changeValueInMap(argumentValues, variableNames, variableName, newValue);
 
-function resetVariablePaths(possibleValuesOfVariable: Variable[]) {
-  for (let i = 0; i < possibleValuesOfVariable.length ; i++){
-    let variable = possibleValuesOfVariable[i] as Variable;
-    variable.testedPath = false;
-  }
-}
+                let result = canProveWithVariables(facts,query,argumentValues, variableNames,body,indexBody);
+                if(result){
+                    return result;
+                }
 
-function hasAlternativesLeft(rule: Predicate, variableNames: Map<string, Variable[]>) {
-  let hasAnAlternative = false;
-  rule.arguments.forEach(function (argument:string) {
-    if (variableNames.has(argument)){
-      let variable = variableNames.get(argument) as Variable[];
-      variable.forEach(function (variable:Variable) {
-        if (!variable.testedPath){
-          hasAnAlternative = true
+                changeValueInMap(argumentValues, variableNames, variableName, variableName);
+
+                query.arguments[i] = variableName;
+
+            } else if (!hasVariables(query)){
+
+                if (miniProlog.canProve(facts,query)){
+
+                    if (indexBody < body.length){
+                        let newQuery = getNewQuery(body[indexBody] as Predicate, argumentValues, variableNames);
+                        equalArgs = canProveWithVariables(facts,newQuery,argumentValues, variableNames,body,indexBody+1);
+                        if(equalArgs){
+                            return equalArgs;
+                        }
+                    }
+                    else {
+                        return true;
+                    }
+
+                } else{
+                    equalArgs = false;
+                }
+            }
+
+            i++
         }
-      })
-    }
-  })
-  return hasAnAlternative;
+
+        if(i >= query.arguments.length){
+            equalArgs = false;
+        }
+
+        return equalArgs;
+    })
+
+    return result.reduce(or);
+
 }
 
-function checkAlternatives(program: Clause[], rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, Variable[]>) : boolean{
-  if (!hasAlternativesLeft(rule,variableNames)){
-    return false;
-  } // todo permutar los valores de forma tal de recorrer el arbol de opciones
-
-  let result = false;
-  let newQuery = getNewQuery(rule, argumentValues, variableNames);
-  if (miniProlog.canProve(program,newQuery)){
-    getVariableValues(program,newQuery,variableNames);
-    result = true;
-  }
-
-  return checkAlternatives(program,rule, argumentValues, variableNames) || result;
-}
-
-function hasVariablesWithMultipleValues(rule: Predicate, variableNames: Map<string, Variable[]>) {
-  let hasMultipleOptions = false;
-  rule.arguments.forEach(function (argument:string) {
-    if (variableNames.has(argument)){
-      let variable = variableNames.get(argument) as Variable[];
-      if (variable.length > 1){
-        hasMultipleOptions = true;
-      }
-    }
-  })
-  return hasMultipleOptions;
-}
 
 const exploreTree = (facts: Clause[],clause : Clause,query:Predicate) : boolean =>{
 
-  let falseCount : number = 0;
-  let variableNames : Map<string,Variable[]> = new Map();
-  let argumentValues : Map<string,string> = new Map();
-  initializeVariables(clause.head,clause.body,variableNames);
-  initializeArguments(clause.head,query,argumentValues);
+    let variableNames : Map<string,string> = new Map();
+    let argumentValues : Map<string,string> = new Map();
+    initializeVariables(clause.head,clause.body,variableNames);
+    initializeArguments(clause.head,query,argumentValues);
 
-  for (let i=0; i < clause.body.length; i++){
-    let rule = clause.body[i] as Predicate;
+    let rule = clause.body[0] as Predicate;
+    let newQuery = getNewQuery(rule, argumentValues, variableNames);
 
-    if (variableNames.size == 0){
-      let newQuery = getNewQuery(rule, argumentValues, variableNames);
-      if (!miniProlog.canProve(facts,newQuery)){
-        return false;
-      }
-    }
-
-    for (let key of variableNames.keys()) {
-
-      let possibleValuesOfVariable = variableNames.get(key) as Variable[];
-
-      if (!rule.arguments.includes(key)){
-        continue;
-      }
-
-      if (possibleValuesOfVariable.length == 0){
-        if(hasVariablesWithMultipleValues(rule,variableNames)){
-          let result = checkAlternatives(facts,rule, argumentValues, variableNames);
-          if (!result){
-            return false;
-          }
-          continue;
-        }
-
-        let newQuery = getNewQuery(rule, argumentValues, variableNames);
-        if (miniProlog.canProve(facts,newQuery)){
-          getVariableValues(facts,newQuery,variableNames);
-          continue;
-        }
-        return false;
-      }
-
-      for (let variableValue in possibleValuesOfVariable){
-        let newQuery = getNewQuery(rule, argumentValues, variableNames);
-        if (!miniProlog.canProve(facts,newQuery)){
-          falseCount++;
-        }
-      }
-
-      if(falseCount == possibleValuesOfVariable.length){
-        return false;
-      }
-      falseCount = 0;
-
-      resetVariablePaths(possibleValuesOfVariable);
-    }
-
-  }
-
-  return true;
-}
-
-
-function keepFacts(program: Clause[]) : Clause[] {
-  let tree : Clause[] = [];
-  program.forEach(function (clause:Clause) {
-    if (clause.body.length == 0){
-      tree.push(clause);
-    }
-  })
-  return tree;
+    return canProveWithVariables(facts,newQuery,argumentValues, variableNames,clause.body,1);
 }
 
 const miniProlog: MiniProlog<Clause, Predicate> = {
-  buildPredicate: (name: string, ...args: string[]): Predicate => {
-    return {name:name, arguments:args};
-  },
+    buildPredicate: (name: string, ...args: string[]): Predicate => {
+        return {name:name, arguments:args};
+    },
 
-  buildClause: (head: Predicate, ...body: Predicate[]): Clause => {
-    return {head,body};
-  },
+    buildClause: (head: Predicate, ...body: Predicate[]): Clause => {
+        return {head,body};
+    },
 
-  canProve: (program: Clause[], query: Predicate): boolean => {
-    let tree : Clause[] = keepFacts(program);
+    canProve: (program: Clause[], query: Predicate): boolean => {
 
-    let proof = program.map(function(clause:Clause){
-      if ((clause.head.name != query.name) || (clause.head.arguments.length != query.arguments.length)){
-        return false
-      }
+        let proof = program.map(function(clause:Clause){
+            if ((clause.head.name != query.name) || (clause.head.arguments.length != query.arguments.length)){
+                return false
+            }
 
-      let exactMatch = equalArguments(clause.head.arguments,query.arguments);
-      if (exactMatch){
-        return exactMatch;
-      }
+            if (!hasVariables(query) && clause.body.length == 0){
+                return equalArguments(clause.head.arguments,query.arguments);
+            }
 
-      let equalWithVariable = equalArgumentsWithVariable(clause.head.arguments,query, tree);
-      if (equalWithVariable){
-        return equalWithVariable;
-      }
+            if (clause.body.length == 0){
+                return equalArgumentsWithVariable(clause.head.arguments,query, program);;
+            }
 
-      if (clause.body.length == 0){
-        return false;
-      }
+            return exploreTree(program,clause,query);
+        })
 
-      return exploreTree(tree,clause,query);
-    })
-
-    return proof.reduce(or,false);
-  },
+        return proof.reduce(or,false);
+    },
 };
 
 export default miniProlog;
