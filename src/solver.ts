@@ -16,13 +16,39 @@ const isVariable = (value:string) : boolean => {
     return value != "" &&  A_IN_UNICODE <= value.charCodeAt(0) && value.charCodeAt(0) <= Z_IN_UNICODE;
 }
 
+function isSameArgument(ruleArgument: string, queryArgument: string) {
+    return ruleArgument == queryArgument;
+}
+
+const hasVariables = (query: Predicate) : boolean => {
+    return query.arguments.some(isVariable)
+}
+
+function differentRule(rule: Predicate, query: Predicate) {
+    return rule.name != query.name || rule.arguments.length != query.arguments.length;
+}
+
+const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,string>) => {
+    body.forEach(function (rule:Predicate) {
+        rule.arguments.forEach(function (argument:string) {
+            if (!head.arguments.includes(argument)){
+                variableValues.set(argument,"");
+            }
+        });
+    })
+}
+
+const initializeArguments = (head: Predicate, query:Predicate, argumentValues : Map<string,string>) => {
+    head.arguments.forEach(function (name:string,i:number) {
+        argumentValues.set(name,query.arguments[i] as string)
+    })
+}
+
 const equalArguments = (predicateArgs:string[],queryValues:string[]) : boolean => {
     let equalArgs = true;
     let i = 0;
     while(equalArgs && i < predicateArgs.length){
-        if (predicateArgs[i] != queryValues[i]){
-            equalArgs = false;
-        }
+        equalArgs = isSameArgument(predicateArgs[i] as string,queryValues[i] as string);
         i++
     }
     return equalArgs;
@@ -49,15 +75,15 @@ const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string
     rule.arguments.forEach(function (argument:string) {
         if (argumentValues.has(argument)){
             let argumentValue = argumentValues.get(argument) as string;
-            copiedArgs.push(isVariable(argumentValue)?argument:argumentValue)
+            copiedArgs.push(isVariable(argumentValue)?argument:argumentValue);
         }
         else if(variableNames.has(argument)){
             let variableValue = variableNames.get(argument) as string;
             if(variableValue == ""){
-                copiedArgs.push(argument)
+                copiedArgs.push(argument);
             }
             else{
-                copiedArgs.push(variableValue)
+                copiedArgs.push(variableValue);
             }
         }
 
@@ -65,28 +91,6 @@ const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string
 
     return copiedArgs;
 }
-
-const or = (truthValue:boolean, currentTruthValue:boolean) : boolean => {
-    return truthValue || currentTruthValue;
-}
-
-const initializeVariables = (head: Predicate, body: Predicate[], variableValues : Map<string,string>) => {
-    body.forEach(function (rule:Predicate) {
-        rule.arguments.forEach(function (argument:string) {
-            if (!head.arguments.includes(argument)){
-                variableValues.set(argument,"");
-            }
-        });
-    })
-}
-
-const initializeArguments = (head: Predicate, query:Predicate, constantValues : Map<string,string>) => {
-    head.arguments.forEach(function (name:string,i:number) {
-        constantValues.set(name,query.arguments[i] as string)
-    })
-}
-
-
 
 function getNewQuery(rule: Predicate, argumentValues: Map<string, string>, variableNames: Map<string, string>) {
     let ruleArguments = copyArgumentsToRule(rule, argumentValues, variableNames);
@@ -102,78 +106,75 @@ function changeValueInMap(argumentValues: Map<string, string>, variableNames: Ma
     }
 }
 
-const hasVariables = (query: Predicate) : boolean => {
-    return query.arguments.some(isVariable)
+function exploreBranchOfTree(rule: Clause,query: Predicate,
+                             argumentValues: Map<string, string>, variableNames: Map<string, string>,
+                             facts: Clause[], body: Predicate[], indexBody: number) {
+
+    if (differentRule(rule.head, query)) {
+        return false;
+    }
+
+    let equalArgs = true;
+    let argumentIndex = 0;
+    while (equalArgs && argumentIndex < query.arguments.length) {
+        if (!isSameArgument(rule.head.arguments[argumentIndex] as string, query.arguments[argumentIndex] as string)
+            && !isVariable(query.arguments[argumentIndex] as string)
+            && rule.body.length == 0) {
+            equalArgs = false;
+        } else if (isVariable(query.arguments[argumentIndex] as string) && rule.body.length == 0) {
+            let variableName = query.arguments[argumentIndex] as string;
+            let newValue = rule.head.arguments[argumentIndex] as string;
+            query.arguments[argumentIndex] = newValue;
+
+            changeValueInMap(argumentValues, variableNames, variableName, newValue);
+
+            let result = exploreBranches(facts, query, argumentValues, variableNames, body, indexBody);
+            if (result) {
+                return result;
+            }
+
+            changeValueInMap(argumentValues, variableNames, variableName, variableName);
+
+            query.arguments[argumentIndex] = variableName;
+
+        } else if (!hasVariables(query) || rule.body.length != 0) {
+
+            equalArgs = miniProlog.canProve(facts, query)
+            if (equalArgs) {
+                if (indexBody < body.length) {
+                    let newQuery = getNewQuery(body[indexBody] as Predicate, argumentValues, variableNames);
+                    equalArgs = exploreBranches(facts, newQuery, argumentValues, variableNames, body, indexBody + 1);
+                    if (equalArgs) {
+                        return equalArgs;
+                    }
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        argumentIndex++
+    }
+
+    return false;
 }
 
-function canProveWithVariables(facts: Clause[], query: Predicate,
+function exploreBranches(facts: Clause[], query: Predicate,
                                argumentValues: Map<string, string>, variableNames: Map<string, string>,
                                body: Predicate[], indexBody: number) : boolean {
+    let proved = false;
+    let i : number = 0;
+    while(i < facts.length && !proved){
+        let rule = facts[i] as Clause;
+        i++;
+        proved = exploreBranchOfTree(rule,query, argumentValues, variableNames, facts, body, indexBody)
+    }
 
-    let result = facts.map(function (rule:Clause) {
-        if (rule.head.name != query.name || rule.head.arguments.length != query.arguments.length){
-            return false;
-        }
-
-        let equalArgs = true;
-        let i = 0;
-        while(equalArgs && i < query.arguments.length){
-            if (rule.head.arguments[i] != query.arguments[i] && !isVariable(query.arguments[i] as string) && rule.body.length == 0){
-                equalArgs = false;
-            }
-            else if (isVariable(query.arguments[i] as string) && rule.body.length == 0){
-                let variableName = query.arguments[i] as string;
-                let newValue = rule.head.arguments[i] as string;
-                query.arguments[i] = newValue;
-
-                changeValueInMap(argumentValues, variableNames, variableName, newValue);
-
-                let result = canProveWithVariables(facts,query,argumentValues, variableNames,body,indexBody);
-                if(result){
-                    return result;
-                }
-
-                changeValueInMap(argumentValues, variableNames, variableName, variableName);
-
-                query.arguments[i] = variableName;
-
-            } else if (!hasVariables(query) || rule.body.length != 0){
-
-                if (miniProlog.canProve(facts,query)){
-
-                    if (indexBody < body.length){
-                        let newQuery = getNewQuery(body[indexBody] as Predicate, argumentValues, variableNames);
-                        equalArgs = canProveWithVariables(facts,newQuery,argumentValues, variableNames,body,indexBody+1);
-                        if(equalArgs){
-                            return equalArgs;
-                        }
-                    }
-                    else {
-                        return true;
-                    }
-
-                } else{
-                    equalArgs = false;
-                }
-            }
-
-            i++
-        }
-
-        if(i >= query.arguments.length){
-            equalArgs = false;
-        }
-
-        return equalArgs;
-    })
-
-    return result.reduce(or);
-
+    return proved;
 }
 
 
 const exploreTree = (facts: Clause[],clause : Clause,query:Predicate) : boolean =>{
-
     let variableNames : Map<string,string> = new Map();
     let argumentValues : Map<string,string> = new Map();
     initializeVariables(clause.head,clause.body,variableNames);
@@ -182,7 +183,7 @@ const exploreTree = (facts: Clause[],clause : Clause,query:Predicate) : boolean 
     let rule = clause.body[0] as Predicate;
     let newQuery = getNewQuery(rule, argumentValues, variableNames);
 
-    return canProveWithVariables(facts,newQuery,argumentValues, variableNames,clause.body,1);
+    return exploreBranches(facts,newQuery,argumentValues, variableNames,clause.body,1);
 }
 
 const miniProlog: MiniProlog<Clause, Predicate> = {
@@ -196,23 +197,29 @@ const miniProlog: MiniProlog<Clause, Predicate> = {
 
     canProve: (program: Clause[], query: Predicate): boolean => {
 
-        let proof = program.map(function(clause:Clause){
-            if ((clause.head.name != query.name) || (clause.head.arguments.length != query.arguments.length)){
-                return false
+        let proved = false;
+        let i : number = 0
+        while (i < program.length && !proved){
+            let clause = program[i] as Clause;
+            i++;
+            if (differentRule(clause.head,query)){
+                continue;
             }
 
             if (!hasVariables(query) && clause.body.length == 0){
-                return equalArguments(clause.head.arguments,query.arguments);
+                proved = equalArguments(clause.head.arguments,query.arguments);
+                continue;
             }
 
             if (clause.body.length == 0){
-                return equalArgumentsWithVariable(clause.head.arguments,query, program);;
+                proved = equalArgumentsWithVariable(clause.head.arguments,query, program);
+                continue;
             }
 
-            return exploreTree(program,clause,query);
-        })
+            proved = exploreTree(program,clause,query);
+        }
 
-        return proof.reduce(or,false);
+        return proved;
     },
 };
 
