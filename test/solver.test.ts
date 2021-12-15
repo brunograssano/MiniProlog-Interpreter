@@ -69,6 +69,11 @@ const relatives = [
         miniProlog.buildPredicate('grandparent', 'GreatGrandparent', 'Middle'),
         miniProlog.buildPredicate('parent', 'Middle', 'GreatGrandchild'),
     ),
+    miniProlog.buildClause(
+        miniProlog.buildPredicate('sibling', 'X', 'Y'),
+        miniProlog.buildPredicate('parent', 'Parent', 'X'),
+        miniProlog.buildPredicate('parent', 'Parent', 'Y'),
+    ),
 ];
 
 describe('facts with relatives', function() {
@@ -171,5 +176,20 @@ describe('variables with relatives', function() {
         const query = miniProlog.buildPredicate('great grandparent', 'X','alejandro');
         expect(miniProlog.canProve(relatives, query)).toEqual(true);
     });
-
+    it('should return that alejandro and cecilia are siblings', () => {
+        const query = miniProlog.buildPredicate('sibling', 'alejandro','cecilia');
+        expect(miniProlog.canProve(relatives, query)).toEqual(true);
+    });
+    it('should return that pepe and pepa are siblings', () => {
+        const query = miniProlog.buildPredicate('sibling', 'pepe','pepa');
+        expect(miniProlog.canProve(relatives, query)).toEqual(true);
+    });
+    it('should return that alejandro and pepe are not siblings', () => {
+        const query = miniProlog.buildPredicate('sibling', 'alejandro','pepe');
+        expect(miniProlog.canProve(relatives, query)).toEqual(false);
+    });
+    it('should return that juan and alejandro are not siblings', () => {
+        const query = miniProlog.buildPredicate('sibling', 'juan','alejandro');
+        expect(miniProlog.canProve(relatives, query)).toEqual(false);
+    });
 });
