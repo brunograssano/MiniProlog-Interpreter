@@ -108,10 +108,6 @@ const hasVariables = (query: Predicate) : boolean => {
 function canProveWithVariables(facts: Clause[], query: Predicate,
                                argumentValues: Map<string, string>, variableNames: Map<string, string>,
                                body: Predicate[], indexBody: number) : boolean {
-    if(indexBody > body.length){
-        return true;
-    }
-
 
     let result = facts.map(function (rule:Clause) {
         if (rule.head.name != query.name || rule.head.arguments.length != query.arguments.length){
@@ -121,10 +117,10 @@ function canProveWithVariables(facts: Clause[], query: Predicate,
         let equalArgs = true;
         let i = 0;
         while(equalArgs && i < query.arguments.length){
-            if (rule.head.arguments[i] != query.arguments[i] && !isVariable(query.arguments[i] as string)){
+            if (rule.head.arguments[i] != query.arguments[i] && !isVariable(query.arguments[i] as string) && rule.body.length == 0){
                 equalArgs = false;
             }
-            else if (isVariable(query.arguments[i] as string)){
+            else if (isVariable(query.arguments[i] as string) && rule.body.length == 0){
                 let variableName = query.arguments[i] as string;
                 let newValue = rule.head.arguments[i] as string;
                 query.arguments[i] = newValue;
@@ -140,7 +136,7 @@ function canProveWithVariables(facts: Clause[], query: Predicate,
 
                 query.arguments[i] = variableName;
 
-            } else if (!hasVariables(query)){
+            } else if (!hasVariables(query) || rule.body.length != 0){
 
                 if (miniProlog.canProve(facts,query)){
 
