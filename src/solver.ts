@@ -48,7 +48,8 @@ const copyArgumentsToRule = (rule : Predicate,argumentValues : Map<string,string
     let copiedArgs :string[] = [];
     rule.arguments.forEach(function (argument:string) {
         if (argumentValues.has(argument)){
-            copiedArgs.push(argumentValues.get(argument) as string)
+            let argumentValue = argumentValues.get(argument) as string;
+            copiedArgs.push(isVariable(argumentValue)?argument:argumentValue)
         }
         else if(variableNames.has(argument)){
             let variableValue = variableNames.get(argument) as string;
