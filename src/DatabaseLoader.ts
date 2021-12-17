@@ -6,15 +6,16 @@ const DATABASE_PATH = './database-prolog/padres.txt';
 
 export const validInput = (input: string) : boolean=> {
     let firstPart = input.split('(');
+    if (firstPart.length != 2 || input.charAt(0) == '('){
+        return false;
+    }
+
     let name = firstPart[0] as string;
     let argsWithoutSplit = firstPart[1] as string;
     let argsWithoutSplitAndSpaces = argsWithoutSplit.replace(/\s+/g, '');
     let argsWithoutSplitAndSpacesAndParenthesis = argsWithoutSplit.slice(0,argsWithoutSplitAndSpaces.length-1);
     let queryArguments = argsWithoutSplitAndSpacesAndParenthesis.split(',');
 
-    if (firstPart.length != 2 || input.charAt(0) == '('){
-        return false;
-    }
     if (argsWithoutSplit.split(')').length > 2 || argsWithoutSplitAndSpaces.charAt(argsWithoutSplitAndSpaces.length-1) != ')'){
         return false;
     }
