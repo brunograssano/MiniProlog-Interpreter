@@ -1,4 +1,5 @@
 import miniProlog from "../src/solver";
+import {parseInput, readDatabase, validInput} from "./DatabaseLoader";
 
 const readline = require("readline");
 
@@ -7,39 +8,7 @@ const rl = readline.createInterface({
     output: process.stdout,
 });
 
-
-function parseInput(input :string)  {
-    let result = input.split('(');
-    let name = result[0] as string;
-    let argsWithoutSplit = result[1] as string;
-    argsWithoutSplit = argsWithoutSplit.slice(0,argsWithoutSplit.length-1).replace(/\s+/g, '');
-    let queryArguments = argsWithoutSplit.split(',');
-    return miniProlog.buildPredicate(name,...queryArguments)
-}
-
-function validInput(input: string) {
-    let firstPart = input.split('(');
-    let name = firstPart[0] as string;
-    let argsWithoutSplit = firstPart[1] as string;
-    argsWithoutSplit = argsWithoutSplit.slice(0,argsWithoutSplit.length-1).replace(/\s+/g, '');
-    let queryArguments = argsWithoutSplit.split(',');
-
-    if (firstPart.length != 2 || input.charAt(0) == '('){
-        return false;
-    }
-    if (argsWithoutSplit.split(')').length > 2 || input.charAt(input.length-1) != ')'){
-        return false;
-    }
-    if(queryArguments.some((arg:string)=>{return arg == "";})){
-        return false;
-    }
-    if(name.replace(/\s+/g, '') == ""){
-        return false;
-    }
-    return true;
-}
-
-function InputMessage() {
+function InputMessage(database: any) {
     console.log("======================================")
     console.log("Please input your query:")
     console.log("Examples:")
@@ -56,16 +25,15 @@ function InputMessage() {
             console.log("Please input a valid query");
         } else {
             let query = parseInput(input);
-            console.log(miniProlog.canProve([], query))
+            console.log(miniProlog.canProve(database, query))
         }
-        InputMessage()
+        InputMessage(database)
     });
 }
 
 function repl() {
-
-    InputMessage()
-
+    let database = readDatabase()
+    InputMessage(database)
 }
 
 repl()
