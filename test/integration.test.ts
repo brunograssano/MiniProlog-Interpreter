@@ -83,7 +83,7 @@ describe('fact', function() {
 
   it('variable in both args', () => {
     const query = miniProlog.buildPredicate('parent', 'X', 'Y');
-    expect(miniProlog.canProve(relatives, query)).toEqual(true);;
+    expect(miniProlog.canProve(relatives, query)).toEqual(true);
   });
 });
 
